@@ -1,0 +1,429 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Agrinas Dashboard</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Rajdhani:wght@500;600;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
+<link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+
+<script src="https://cdn.jsdelivr.net/npm/echarts@5/dist/echarts.min.js"></script>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+{% macro kpi_card(k, option_path, uid) %}
+<div class="kpi-card" style="background:{{ kpi_bg(k.color) }};flex:1;box-shadow:var(--sh), 0 0 26px -4px {{ k.color }}CC">
+  <div class="kpi-top">
+    <div class="kpi-title">{{ k.title }}</div>
+    <div class="kpi-icon" style="background:{{ k.color }}22;color:{{ k.color }}"><i class="material-icons">{{ k.icon }}</i></div>
+  </div>
+  <div class="kpi-value" title="{{ k.tooltip }}">{{ k.value }}</div>
+  <div class="kpi-sub">{{ k.sub }}</div>
+  <div class="kpi-spark" data-echart data-option-id="{{ option_path }}" id="{{ uid }}"></div>
+</div>
+{% endmacro %}
+
+{% macro stat_card(label, value, sub, color) %}
+<div class="kpi-card" style="background:{{ kpi_bg(color) }};flex:1;box-shadow:var(--sh), 0 0 26px -4px {{ color }}CC">
+  <div class="kpi-title">{{ label|upper }}</div>
+  <div class="kpi-value">{{ value }}</div>
+  <div class="kpi-sub">{{ sub }}</div>
+</div>
+{% endmacro %}
+
+{% macro panel_header(title) %}
+<div class="panel-header">
+  <div class="panel-title">{{ title }}</div>
+  <i class="material-icons panel-more">more_horiz</i>
+</div>
+{% endmacro %}
+
+{% macro flow_box(item) %}
+<div class="flow-box" style="{{ flow_style(item.color) }}">
+  <div class="flow-icon-wrap">
+    <div class="flow-num" style="color:{{ item.color }}">{{ item.label }}</div>
+    <div class="flow-icon-chip" style="background:{{ item.color }}22;color:{{ item.color }}">
+      <i class="material-icons" style="font-size:13px">{{ item.icon }}</i>
+    </div>
+  </div>
+  <div class="flow-value">{{ item.value }}</div>
+  <div class="flow-sub">{{ item.sub }}</div>
+</div>
+{% endmacro %}
+
+{% macro flow_wrap(items) %}
+<div class="flow-wrap">
+  {% for item in items %}
+    {{ flow_box(item) }}
+    {% if not loop.last %}<div class="flow-arrow"><i class="material-icons">chevron_right</i></div>{% endif %}
+  {% endfor %}
+</div>
+{% endmacro %}
+
+{% macro tower_table(rows) %}
+<div class="table-scroll">
+<table class="tower-table">
+  <thead><tr>
+    <th style="width:24px"></th><th>PRIORITAS</th><th>VOLUME</th>
+    <th>TINGKAT RISIKO</th><th>AKSI REKOMENDASI</th>
+  </tr></thead>
+  <tbody>
+    {% for r in rows %}
+    <tr>
+      <td>{{ loop.index }}</td><td>{{ r.p }}</td><td>{{ r.v }}</td>
+      <td><span class="badge {{ r.badge_cls }}">{{ r.risk }}</span></td>
+      <td>{{ r.aksi }}</td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
+{% macro regional_table(cols) %}
+<div class="table-scroll">
+<table class="tower-table">
+  <thead><tr>{% for h, _ in cols %}<th>{{ h }}</th>{% endfor %}</tr></thead>
+  <tbody>
+  {% for loc in d.regional_locations %}
+    <tr>
+    {% for h, key in cols %}
+      <td>
+      {%- if key == 'status_badge' -%}
+        <span class="badge" style="background:{{ loc.color }}22;color:{{ loc.color }};border:1px solid {{ loc.color }}55">{{ loc.status }}</span>
+      {%- elif key == 'furniture_status_badge' -%}
+        <span class="badge" style="background:{{ loc.furniture_color }}22;color:{{ loc.furniture_color }};border:1px solid {{ loc.furniture_color }}55">{{ loc.furniture_status }}</span>
+      {%- else -%}
+        {{ loc[key] }}
+      {%- endif -%}
+      </td>
+    {% endfor %}
+    </tr>
+  {% endfor %}
+  </tbody>
+</table>
+</div>
+{% endmacro %}
+
+{% macro placeholder(icon, message) %}
+<div class="placeholder-box">
+  <i class="material-icons">{{ icon }}</i>
+  <p>{{ message }}</p>
+</div>
+{% endmacro %}
+
+</head>
+<body data-geojson-url="{{ url_for('static', filename='data/indonesia_provinces.json') }}">
+
+<script id="dashboard-data" type="application/json">{{ d | tojson }}</script>
+
+<div class="dash-root">
+  <!-- ================= TOPBAR ================= -->
+  <div class="topbar-full no-wrap">
+    <div class="topbar-danantara no-wrap">
+      <i class="material-icons topbar-icon-btn" id="sidebar-toggle-icon">menu_open</i>
+      <div class="logo-mark">
+        <svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+          <circle cx="18" cy="18" r="18" fill="#0B0B0F"/>
+          <path d="M6 20 C10 10, 22 8, 29 14 C22 12, 12 16, 10 24 Z" fill="#E4362E"/>
+          <path d="M8 25 C13 18, 23 17, 27 21 C21 20, 13 23, 12 28 Z" fill="#FFFFFF"/>
+        </svg>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:0">
+        <div class="sidebar-brand-title">Danantara</div>
+        <div class="sidebar-brand-title tight">Indonesia</div>
+        <div class="sidebar-brand-sub">member of Danantara Holdings Indonesia</div>
+      </div>
+    </div>
+
+    <div class="hero-time">
+      <div class="row-line no-wrap"><i class="material-icons" style="font-size:12px">calendar_today</i><span id="date-label">-</span></div>
+      <div class="row-line no-wrap"><i class="material-icons" style="font-size:12px">schedule</i><span id="time-label">-</span></div>
+    </div>
+
+    <div class="topbar-hero-merged no-wrap">
+      <div class="hero-bar-title">
+        <div class="hero-eyebrow">PUSAT KOMANDO EKSEKUTIF</div>
+        <div class="hero-title">MANAJEMEN GEDUNG</div>
+        <div class="hero-sub">Kinerja Pekerjaan &middot; Portofolio Selesai &middot; Investasi Gedung</div>
+      </div>
+      <div class="hero-logo-block no-wrap">
+        <div class="logo-mark-sm">
+          <svg viewBox="0 0 36 36" xmlns="http://www.w3.org/2000/svg">
+            <path d="M18 2 C24 12, 30 18, 24 27 C20 32, 12 32, 9 26 C5 19, 12 12, 18 2 Z" fill="#2FA84F"/>
+            <path d="M18 30.5 C13 30.5, 9 27, 9 22 C9 27.5, 13.5 31.5, 18 32.5 C22.5 31.5, 27 27.5, 27 22 C27 27, 23 30.5, 18 30.5 Z" fill="#F2B807"/>
+            <circle cx="18" cy="20" r="6" fill="#1E6FE0"/>
+          </svg>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:0">
+          <div class="logo-text-1">AGRINAS PALMA</div>
+          <div class="logo-text-2">NUSANTARA</div>
+        </div>
+        <i class="material-icons topbar-icon-btn" id="fullscreen-toggle">fullscreen</i>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= SIDEBAR + MAIN ================= -->
+  <div class="dash-shell">
+    <div class="sidebar">
+      <div class="menu-section" style="margin-top:2px">MENU UTAMA</div>
+      <div class="menu-item active" data-view="dashboard"><i class="material-icons" style="font-size:16px">dashboard</i><span class="menu-item-label">Dashboard</span></div>
+      <div class="menu-item" data-view="portofolio"><i class="material-icons" style="font-size:16px">folder_open</i><span class="menu-item-label">Portofolio</span></div>
+      <div class="menu-item" data-view="investasi"><i class="material-icons" style="font-size:16px">trending_up</i><span class="menu-item-label">Investasi</span></div>
+      <div class="menu-item" data-view="delivery"><i class="material-icons" style="font-size:16px">speed</i><span class="menu-item-label">Delivery Performance</span></div>
+      <div class="menu-item" data-view="tower"><i class="material-icons" style="font-size:16px">apartment</i><span class="menu-item-label">Management Tower</span></div>
+      <div class="menu-item" data-view="flow"><i class="material-icons" style="font-size:16px">account_tree</i><span class="menu-item-label">Portfolio Flow</span></div>
+      <div class="menu-item" data-view="peta"><i class="material-icons" style="font-size:16px">map</i><span class="menu-item-label">Peta Regional</span></div>
+      <div class="menu-item" data-view="laporan"><i class="material-icons" style="font-size:16px">description</i><span class="menu-item-label">Laporan</span></div>
+      <div class="menu-item" data-view="pengaturan"><i class="material-icons" style="font-size:16px">settings</i><span class="menu-item-label">Pengaturan</span></div>
+
+      <div class="menu-section">QUICK ACCESS</div>
+      <div class="menu-item" data-view="pipeline"><i class="material-icons" style="font-size:16px">view_timeline</i><span class="menu-item-label">Project Pipeline</span></div>
+      <div class="menu-item" data-view="dokumen"><i class="material-icons" style="font-size:16px">folder_shared</i><span class="menu-item-label">Dokumen Regional</span></div>
+      <div class="menu-item" data-view="kalender"><i class="material-icons" style="font-size:16px">event</i><span class="menu-item-label">Kalender Kegiatan</span></div>
+      <div class="menu-item" data-view="notifikasi"><i class="material-icons" style="font-size:16px">notifications</i><span class="menu-item-label">Notifikasi</span><span class="badge" style="background:#e53935;color:#fff">{{ d.notif_count }}</span></div>
+
+      <div class="logout-btn" style="margin-top:14px"><i class="material-icons">logout</i><span>Logout</span></div>
+    </div>
+
+    <div class="main">
+
+      <!-- ================= DASHBOARD ================= -->
+      <div class="view-panel view-dashboard" data-view="dashboard">
+        <div class="row-wrap">
+          {% for k in d.kpis %}{{ kpi_card(k, 'kpis.' ~ loop.index0 ~ '.chart_option', 'dash-kpi-' ~ loop.index0) }}{% endfor %}
+        </div>
+
+        <div class="row-wrap" style="align-items:stretch">
+          <div class="panel panel-green" style="width:40%">
+            {{ panel_header('COMPLETED WORK PORTFOLIO') }}
+            <div style="width:100%;align-items:center;justify-content:center;gap:22px;display:flex">
+              <div id="chart-completed-pie" data-echart data-option-id="charts.completed_pie" style="width:210px;height:210px;flex-shrink:0"></div>
+              <div style="display:flex;flex-direction:column;gap:8px">
+                <div style="display:flex;align-items:center;gap:7px">
+                  <div style="width:10px;height:10px;border-radius:50%;background:#F87171"></div>
+                  <div style="font-size:11.5px;color:#B9D4E8">Selesai</div>
+                </div>
+                <div style="font-size:17px;font-weight:800;color:#fff;margin-left:17px">{{ d.pekerjaan_selesai }}</div>
+                <div style="display:flex;align-items:center;gap:7px;margin-top:4px">
+                  <div style="width:10px;height:10px;border-radius:50%;background:#F5A623"></div>
+                  <div style="font-size:11.5px;color:#B9D4E8">Belum Selesai</div>
+                </div>
+                <div style="font-size:17px;font-weight:800;color:#fff;margin-left:17px">{{ d.belum_selesai }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel panel-purple" style="width:60%">
+            {{ panel_header('DELIVERY PERFORMANCE') }}
+            <div id="chart-delivery-mini" data-echart data-option-id="charts.delivery_bar_mini" style="width:100%;height:250px"></div>
+          </div>
+        </div>
+
+        <div class="row-wrap" style="align-items:stretch">
+          <div class="panel panel-green" style="width:47%">
+            {{ panel_header('INVESTMENT BUILDING') }}
+            <div id="chart-investment-top10" data-echart data-option-id="charts.investment_bar_top10" style="width:100%;height:296px"></div>
+          </div>
+          <div class="panel panel-purple" style="width:53%">
+            {{ panel_header('MANAGEMENT CONTROL TOWER') }}
+            {{ tower_table(d.tower_rows) }}
+          </div>
+        </div>
+
+        <div class="row-wrap" style="align-items:stretch">
+          <div class="panel panel-cyan" style="width:33%">
+            <div class="panel-header"><div class="panel-title">EXECUTIVE SIGNAL</div></div>
+            <div class="exec-wrap">
+              <div class="exec-pulse"><div class="exec-dot"></div></div>
+              <div style="display:flex;flex-direction:column;gap:2px">
+                <div class="exec-text">{{ d.exec_signal }}</div>
+              </div>
+            </div>
+          </div>
+          <div class="panel" style="width:67%">
+            {{ panel_header('PORTFOLIO DELIVERY FLOW') }}
+            {{ flow_wrap(d.flow_items) }}
+          </div>
+        </div>
+
+        <div class="footer-bar">
+          <div class="footer-left">
+            <i class="material-icons" style="color:#38BDF8">verified_user</i>
+            <div style="display:flex;flex-direction:column;gap:0">
+              <div class="footer-title">DASHBOARD GOVERNANCE</div>
+              <div class="footer-desc">Data bersifat live. Gunakan penelaahan data yang konsisten agar klasifikasi, grafik, dan sinyal keputusan tetap akurat.</div>
+            </div>
+          </div>
+          <div class="footer-right">
+            <div class="status-dot"></div>
+            <div>BM Command Center v1.0 &middot; Update sheet: {{ d.last_update }}</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= PORTOFOLIO ================= -->
+      <div class="view-panel" data-view="portofolio">
+        <div class="row-wrap">
+          {% for label, color in d.status_legend %}
+            {{ stat_card(label, d.status_counts[label], 'portofolio pekerjaan', color) }}
+          {% endfor %}
+        </div>
+        <div class="panel panel-green">
+          {{ panel_header('PORTOFOLIO PEKERJAAN REGIONAL') }}
+          {{ regional_table([('No','no'), ('Provinsi','provinsi'), ('Kota','kota'), ('Pekerjaan','proyek'), ('Status','status_badge')]) }}
+        </div>
+      </div>
+
+      <!-- ================= INVESTASI ================= -->
+      <div class="view-panel" data-view="investasi">
+        <div class="row-wrap">
+          {% for k in d.investasi_kpis %}{{ kpi_card(k, 'investasi_kpis.' ~ loop.index0 ~ '.chart_option', 'inv-kpi-' ~ loop.index0) }}{% endfor %}
+        </div>
+        <div class="panel panel-green" style="margin-bottom:12px">
+          {{ panel_header('INVESTMENT BUILDING (SEMUA ITEM)') }}
+          <div id="chart-investment-all" data-echart data-option-id="charts.investment_bar_all"
+               style="width:100%;height:{{ [280, 26 * (d.investment_building_all|length)]|max }}px"></div>
+        </div>
+      </div>
+
+      <!-- ================= DELIVERY PERFORMANCE ================= -->
+      <div class="view-panel" data-view="delivery">
+        <div class="panel panel-purple">
+          {{ panel_header('DELIVERY PERFORMANCE') }}
+          <div id="chart-delivery-full" data-echart data-option-id="charts.delivery_bar_full" style="width:100%;height:340px"></div>
+          <div class="table-scroll" style="margin-top:12px">
+          <table class="tower-table">
+            <thead><tr><th>Kategori</th><th>Jumlah Pekerjaan</th><th>Persentase</th></tr></thead>
+            <tbody>
+              {% for item in d.delivery_perf %}
+              <tr><td>{{ item.name }}</td><td>{{ item.value }}</td><td>{{ item.pct }}%</td></tr>
+              {% endfor %}
+            </tbody>
+          </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- ================= MANAGEMENT TOWER ================= -->
+      <div class="view-panel" data-view="tower">
+        <div class="panel panel-purple">
+          {{ panel_header('MANAGEMENT CONTROL TOWER') }}
+          {{ tower_table(d.tower_rows) }}
+        </div>
+      </div>
+
+      <!-- ================= PORTFOLIO FLOW ================= -->
+      <div class="view-panel" data-view="flow">
+        <div class="panel">
+          {{ panel_header('PORTFOLIO DELIVERY FLOW') }}
+          {{ flow_wrap(d.flow_items) }}
+        </div>
+      </div>
+
+      <!-- ================= PETA REGIONAL ================= -->
+      <div class="view-panel view-peta" data-view="peta">
+        <div class="panel panel-cyan" style="margin-bottom:12px">
+          {{ panel_header('PETA SEBARAN LOKASI REGIONAL') }}
+          <div id="regional-map" class="map-box"></div>
+          <div class="legend-row">
+            {% for label, color in d.status_legend %}
+            <div class="legend-chip"><div class="legend-dot" style="background:{{ color }}"></div><div>{{ label }}</div></div>
+            {% endfor %}
+          </div>
+        </div>
+        <div class="panel panel-purple" style="margin-bottom:12px">
+          {{ panel_header('LIST PEKERJAAN & FURNITURE REGIONAL') }}
+          {{ regional_table([
+              ('No','no'), ('Provinsi','provinsi'), ('Kota','kota'),
+              ('Pekerjaan (List Pekerjaan Regional)','proyek'), ('Status','status_badge'),
+              ('Furniture (List Furniture Regional)','furniture'), ('Status','furniture_status_badge'),
+              ('Keterangan','keterangan')
+          ]) }}
+        </div>
+        <div class="row-wrap">
+          {% for label, color in d.status_legend %}
+            {{ stat_card(label, d.status_counts[label], 'lokasi regional', color) }}
+          {% endfor %}
+        </div>
+      </div>
+
+      <!-- ================= LAPORAN ================= -->
+      <div class="view-panel" data-view="laporan">
+        <div class="row-wrap">
+          {% for k in d.kpis %}{{ kpi_card(k, 'kpis.' ~ loop.index0 ~ '.chart_option', 'lap-kpi-' ~ loop.index0) }}{% endfor %}
+        </div>
+        <div class="panel panel-cyan">
+          {{ panel_header('LAPORAN LIST PEKERJAAN & FURNITURE REGIONAL') }}
+          <div style="font-size:10.5px;color:#6E8CA4;margin-bottom:8px">Sumber: Google Sheet "List Pekerjaan Regional" &amp; "List Furniture Regional"</div>
+          {{ regional_table([
+              ('No','no'), ('Provinsi','provinsi'), ('Kota','kota'), ('Pekerjaan','proyek'),
+              ('Status Pekerjaan','status_badge'), ('Furniture','furniture'),
+              ('Status Furniture','furniture_status_badge'), ('Kelengkapan Dokumen','dokumen'),
+              ('Keterangan','keterangan')
+          ]) }}
+        </div>
+      </div>
+
+      <!-- ================= PENGATURAN ================= -->
+      <div class="view-panel" data-view="pengaturan">
+        <div class="panel">
+          {{ panel_header('PENGATURAN APLIKASI') }}
+          {{ placeholder('settings', 'Pengaturan aplikasi belum tersedia. Fitur ini akan menyusul pada pembaruan berikutnya.') }}
+        </div>
+      </div>
+
+      <!-- ================= PROJECT PIPELINE ================= -->
+      <div class="view-panel" data-view="pipeline">
+        <div class="panel">
+          {{ panel_header('PROJECT PIPELINE') }}
+          {{ flow_wrap(d.flow_items) }}
+        </div>
+      </div>
+
+      <!-- ================= DOKUMEN REGIONAL ================= -->
+      <div class="view-panel" data-view="dokumen">
+        <div class="panel panel-green">
+          {{ panel_header('DOKUMEN REGIONAL (KELENGKAPAN DOKUMEN)') }}
+          {{ regional_table([('No','no'), ('Provinsi','provinsi'), ('Kota','kota'), ('Kelengkapan Dokumen','dokumen'), ('Status Pekerjaan','status_badge')]) }}
+        </div>
+      </div>
+
+      <!-- ================= KALENDER KEGIATAN ================= -->
+      <div class="view-panel" data-view="kalender">
+        <div class="panel">
+          {{ panel_header('KALENDER KEGIATAN') }}
+          {{ placeholder('event', 'Belum ada data kalender kegiatan yang terhubung. Hubungkan sumber data agenda untuk menampilkannya di sini.') }}
+        </div>
+      </div>
+
+      <!-- ================= NOTIFIKASI ================= -->
+      <div class="view-panel" data-view="notifikasi">
+        <div class="panel panel-purple">
+          {{ panel_header('NOTIFIKASI & PERINGATAN PRIORITAS') }}
+          {% for r in d.tower_rows %}
+          <div class="notif-card">
+            <div class="notif-icon" style="background:{{ r.risk_icon_color }}22;color:{{ r.risk_icon_color }}">
+              <i class="material-icons" style="font-size:16px">{{ r.risk_icon }}</i>
+            </div>
+            <div style="display:flex;flex-direction:column;gap:0;flex:1">
+              <div class="notif-title">{{ r.p }}</div>
+              <div class="notif-desc">Volume: {{ r.v }} &middot; {{ r.aksi }}</div>
+            </div>
+            <span class="badge" style="background:{{ r.risk_icon_color }}22;color:{{ r.risk_icon_color }};border:1px solid {{ r.risk_icon_color }}55">{{ r.risk }}</span>
+          </div>
+          {% endfor %}
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+
+<script src="{{ url_for('static', filename='js/app.js') }}"></script>
+</body>
+</html>
